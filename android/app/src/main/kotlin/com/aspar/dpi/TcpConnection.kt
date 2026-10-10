@@ -133,7 +133,6 @@ class TcpConnection(
                     Thread.sleep(12) // فاصله تا سگمنتِ اول قطعاً جدا برود
                     out.write(data, splitAt, data.size - splitAt)
                     out.flush()
-                    svc.log("ClientHello شکسته شد در بایت $splitAt (${data.size} بایت)")
                     return
                 } catch (e: Throwable) {
                     throw e
