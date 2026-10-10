@@ -25,7 +25,7 @@ class AsparVpnService : VpnService() {
         const val ACTION_STOP = "com.aspar.dpi.STOP"
         private const val CHANNEL_ID = "aspar_dpi_vpn"
         private const val NOTIF_ID = 0x5D71
-        const val VERSION = "v3 (DoH no-SNI)"
+        const val VERSION = "v4 (DoH strip-SNI)"
         private const val MAX_CONNS = 600
     }
 
@@ -171,7 +171,7 @@ class AsparVpnService : VpnService() {
                         val out = Packets.buildUdp(srvIp, srvPort, appIp, appPort, resp, 0, resp.size)
                         writeToTun(out)
                     } else {
-                        VpnBus.log("DNS حل نشد")
+                        if (dnsFailLogged < 4) { dnsFailLogged++; VpnBus.log("DNS حل نشد") }
                     }
                 } catch (_: Throwable) {
                 }
@@ -201,6 +201,7 @@ class AsparVpnService : VpnService() {
 
     fun log(s: String) = VpnBus.log(s)
 
+    @Volatile private var dnsFailLogged = 0
     private var protectFailLogged = false
     fun logProtectFailOnce() {
         if (!protectFailLogged) {

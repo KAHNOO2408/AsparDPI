@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../core/app_version.dart';
 import '../core/vpn_controller.dart';
 
@@ -46,6 +47,15 @@ class _HomePageState extends State<HomePage> {
         );
       }
     });
+  }
+
+  Future<void> _copyLog() async {
+    await Clipboard.setData(ClipboardData(text: _log.join('\n')));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لاگ کپی شد'), duration: Duration(seconds: 1)),
+      );
+    }
   }
 
   Future<void> _toggle() async {
@@ -117,6 +127,11 @@ class _HomePageState extends State<HomePage> {
               children: [
                 const Text('لاگ'),
                 const Spacer(),
+                TextButton.icon(
+                  onPressed: _copyLog,
+                  icon: const Icon(Icons.copy, size: 18),
+                  label: const Text('کپی'),
+                ),
                 TextButton(
                   onPressed: () => setState(() => _log.clear()),
                   child: const Text('پاک کردن'),
