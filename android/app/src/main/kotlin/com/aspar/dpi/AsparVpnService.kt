@@ -25,7 +25,7 @@ class AsparVpnService : VpnService() {
         const val ACTION_STOP = "com.aspar.dpi.STOP"
         private const val CHANNEL_ID = "aspar_dpi_vpn"
         private const val NOTIF_ID = 0x5D71
-        const val VERSION = "v1 (ClientHello split + DNS-over-TCP split)"
+        const val VERSION = "v2 (bind+protect fix)"
         private const val MAX_CONNS = 600
     }
 
@@ -195,6 +195,14 @@ class AsparVpnService : VpnService() {
     }
 
     fun log(s: String) = VpnBus.log(s)
+
+    private var protectFailLogged = false
+    fun logProtectFailOnce() {
+        if (!protectFailLogged) {
+            protectFailLogged = true
+            VpnBus.log("protect() ناموفق — به addDisallowedApplication تکیه می‌شود")
+        }
+    }
 
     fun writeToTun(pkt: ByteArray) {
         val out = tunOut ?: return

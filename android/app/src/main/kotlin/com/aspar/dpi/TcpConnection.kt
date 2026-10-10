@@ -46,9 +46,9 @@ class TcpConnection(
         thread(name = "up-connect") {
             val sock = Socket()
             try {
-                if (!svc.protect(sock)) {
-                    svc.log("protect() ناموفق")
-                }
+                // ابتدا bind تا file descriptor ساخته شود، سپس protect
+                try { sock.bind(InetSocketAddress(0)) } catch (_: Throwable) {}
+                if (!svc.protect(sock)) svc.logProtectFailOnce()
                 sock.tcpNoDelay = true
                 sock.connect(InetSocketAddress(Packets.ipToString(serverIp), serverPort), 8000)
                 upstream = sock

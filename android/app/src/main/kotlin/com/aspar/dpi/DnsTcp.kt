@@ -21,6 +21,7 @@ object DnsTcp {
     fun resolve(resolverIp: Int, query: ByteArray, protect: (Socket) -> Unit): ByteArray? {
         val sock = Socket()
         try {
+            try { sock.bind(InetSocketAddress(0)) } catch (_: Throwable) {}
             protect(sock)
             sock.tcpNoDelay = true
             sock.soTimeout = 6000
