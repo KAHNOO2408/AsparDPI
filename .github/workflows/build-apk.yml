@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -31,7 +34,21 @@ jobs:
         run: flutter pub get
 
       - name: Build release APK
-        run: flutter build apk --release
+        id: build
+        run: |
+          set -o pipefail
+          flutter build apk --release --stacktrace 2>&1 | tee /tmp/build.log
+
+      - name: Save build log on failure
+        if: failure()
+        run: |
+          mkdir -p ci
+          tail -c 60000 /tmp/build.log > ci/last-build-error.log || true
+          git config user.name "ci"
+          git config user.email "ci@aspar.local"
+          git add -f ci/last-build-error.log
+          git commit -m "CI: build error log [skip ci]" || echo "nothing to commit"
+          git push origin HEAD:main || echo "push failed"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
