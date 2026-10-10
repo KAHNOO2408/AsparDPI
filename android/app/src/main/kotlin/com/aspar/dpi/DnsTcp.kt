@@ -5,27 +5,39 @@ import java.net.InetSocketAddress
 import java.net.Socket
 
 /**
- * حل‌کننده‌ی DNS روی TCP با همان ترفندِ شکستن.
+ * حل‌کننده‌ی DNS روی TCP با شکستِ بایتیِ دستی (که کاملاً خودمان بایت‌ها را
+ * می‌نویسیم، برخلافِ DoH/SSLSocket که Conscrypt کنترلش را می‌گیرد).
  *
- * مسمومیتِ DNS در ایران معمولاً اسمِ دامنه را داخلِ کوئریِ DNS (به‌صورت متنِ باز)
- * می‌خواند و پاسخِ جعلی تزریق می‌کند. اگر کوئری را روی TCP بفرستیم و درست وسطِ
- * اسمِ دامنه به دو سگمنت بشکنیم، تزریق‌کننده نمی‌تواند نام را تطبیق بدهد و پاسخِ
- * واقعی از ریزالورِ بالادست می‌رسد.
+ * برای تشخیص: IPِ جوابِ هر ریزالور را در لاگ چاپ می‌کنیم تا ببینیم جوابِ واقعی
+ * می‌گیریم یا باز هم IPِ مسموم (10.10.34.x).
  */
 object DnsTcp {
+    private val resolvers = listOf("1.1.1.1", "8.8.8.8", "9.9.9.9")
+    @Volatile private var logged = 0
 
-    /**
-     * کوئریِ DNS (همان payloadِ UDP) را روی TCP به ریزالور می‌فرستد و پاسخِ خام
-     * DNS را برمی‌گرداند، یا null در صورت خطا/تایم‌اوت.
-     */
-    fun resolve(resolverIp: Int, query: ByteArray, protect: (Socket) -> Unit): ByteArray? {
+    fun resolve(query: ByteArray, protect: (Socket) -> Unit): ByteArray? {
+        for (r in resolvers) {
+            try {
+                val resp = query1(r, query, protect)
+                if (resp != null) {
+                    if (logged < 8) { logged++; VpnBus.log("DNS✓ TCP $r → ${firstA(resp)}") }
+                    return resp
+                }
+            } catch (e: Throwable) {
+                if (logged < 8) { logged++; VpnBus.log("DNS✗ TCP $r: ${e.javaClass.simpleName} ${e.message}") }
+            }
+        }
+        return null
+    }
+
+    private fun query1(ip: String, query: ByteArray, protect: (Socket) -> Unit): ByteArray? {
         val sock = Socket()
         try {
             try { sock.bind(InetSocketAddress(0)) } catch (_: Throwable) {}
             protect(sock)
             sock.tcpNoDelay = true
             sock.soTimeout = 6000
-            sock.connect(InetSocketAddress(Packets.ipToString(resolverIp), 53), 6000)
+            sock.connect(InetSocketAddress(ip, 53), 6000)
 
             val out = sock.getOutputStream()
             val len = query.size
@@ -34,10 +46,9 @@ object DnsTcp {
             msg[1] = (len and 0xFF).toByte()
             System.arraycopy(query, 0, msg, 2, len)
 
-            // نقطه‌ی شکست را وسطِ qname می‌گذاریم.
-            // ساختار: [2 بایت طول TCP][12 بایت هدر DNS][qname...]
+            // شکست وسطِ qname: [2 طول][12 هدر][qname]
             val qnameStart = 2 + 12
-            val qnameLen = qnameLength(query) // در فضای payloadِ DNS
+            val qnameLen = qnameLength(query)
             var splitAt = qnameStart + (qnameLen / 2)
             if (splitAt <= qnameStart) splitAt = (qnameStart + 1).coerceAtMost(msg.size - 1)
             if (splitAt >= msg.size) splitAt = msg.size / 2
@@ -54,21 +65,61 @@ object DnsTcp {
             val resp = ByteArray(respLen)
             din.readFully(resp)
             return resp
-        } catch (_: Throwable) {
-            return null
         } finally {
             try { sock.close() } catch (_: Throwable) {}
         }
     }
 
-    /** طولِ qname را در payloadِ DNS (از offset 12) حساب می‌کند. */
+    private fun u16(b: ByteArray, i: Int) = ((b[i].toInt() and 0xFF) shl 8) or (b[i + 1].toInt() and 0xFF)
+
+    /** اولین رکوردِ A در پاسخ را به‌صورت متن برمی‌گرداند (برای تشخیصِ مسموم‌بودن). */
+    private fun firstA(resp: ByteArray): String {
+        try {
+            if (resp.size < 12) return "?"
+            val qd = u16(resp, 4); val an = u16(resp, 6)
+            if (an == 0) return "no-answer"
+            var i = 12
+            // رد شدن از سوال‌ها
+            for (q in 0 until qd) {
+                while (i < resp.size && resp[i].toInt() != 0) {
+                    val l = resp[i].toInt() and 0xFF
+                    if (l and 0xC0 != 0) { i += 1; break }
+                    i += 1 + l
+                }
+                i += 1   // بایتِ صفر
+                i += 4   // qtype + qclass
+            }
+            for (a in 0 until an) {
+                if (i >= resp.size) break
+                if ((resp[i].toInt() and 0xC0) == 0xC0) {
+                    i += 2
+                } else {
+                    while (i < resp.size && resp[i].toInt() != 0) { val l = resp[i].toInt() and 0xFF; i += 1 + l }
+                    i += 1
+                }
+                if (i + 10 > resp.size) break
+                val type = u16(resp, i)
+                val rdlen = u16(resp, i + 8)
+                val rd = i + 10
+                if (type == 1 && rdlen == 4 && rd + 4 <= resp.size) {
+                    return "${resp[rd].toInt() and 0xFF}.${resp[rd + 1].toInt() and 0xFF}." +
+                        "${resp[rd + 2].toInt() and 0xFF}.${resp[rd + 3].toInt() and 0xFF}"
+                }
+                i = rd + rdlen
+            }
+            return "no-A"
+        } catch (_: Throwable) {
+            return "?"
+        }
+    }
+
     private fun qnameLength(dns: ByteArray): Int {
         var i = 12
         var count = 0
         while (i < dns.size) {
             val l = dns[i].toInt() and 0xFF
             if (l == 0) { count += 1; break }
-            if ((l and 0xC0) != 0) { count += 2; break } // pointer (بعید در کوئری)
+            if ((l and 0xC0) != 0) { count += 2; break }
             count += 1 + l
             i += 1 + l
         }

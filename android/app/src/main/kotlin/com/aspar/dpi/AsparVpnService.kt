@@ -25,7 +25,7 @@ class AsparVpnService : VpnService() {
         const val ACTION_STOP = "com.aspar.dpi.STOP"
         private const val CHANNEL_ID = "aspar_dpi_vpn"
         private const val NOTIF_ID = 0x5D71
-        const val VERSION = "v5 (DoH split-ClientHello)"
+        const val VERSION = "v6 (DNS diagnostic)"
         private const val MAX_CONNS = 600
     }
 
@@ -163,9 +163,9 @@ class AsparVpnService : VpnService() {
             // DNS: اول DoH روی IP خام (بدون SNI)، اگر نشد شکستنِ DNS روی TCP
             udpPool.submit {
                 try {
-                    var resp = Doh.resolve(data) { s -> protect(s) }
+                    var resp = DnsTcp.resolve(data) { s -> protect(s) }
                     if (resp == null) {
-                        resp = DnsTcp.resolve(srvIp, data) { s -> protect(s) }
+                        resp = Doh.resolve(data) { s -> protect(s) }
                     }
                     if (resp != null) {
                         val out = Packets.buildUdp(srvIp, srvPort, appIp, appPort, resp, 0, resp.size)
