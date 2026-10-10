@@ -194,6 +194,8 @@ class AsparVpnService : VpnService() {
         }
     }
 
+    fun log(s: String) = VpnBus.log(s)
+
     fun writeToTun(pkt: ByteArray) {
         val out = tunOut ?: return
         synchronized(tunWriteLock) {
@@ -263,7 +265,7 @@ class AsparVpnService : VpnService() {
                 Notification.Builder(this, CHANNEL_ID)
                     .setContentTitle("AsparDPI روشن است")
                     .setContentText("عبور از فیلترینگِ SNI برای همه‌ی اپ‌ها")
-                    .setSmallIcon(android.R.drawable.stat_sys_vpn_ic)
+                    .setSmallIcon(android.R.drawable.ic_dialog_info)
                     .setContentIntent(openIntent)
                     .setOngoing(true)
                     .build()
@@ -272,7 +274,7 @@ class AsparVpnService : VpnService() {
                 Notification.Builder(this)
                     .setContentTitle("AsparDPI روشن است")
                     .setContentText("عبور از فیلترینگِ SNI")
-                    .setSmallIcon(android.R.drawable.stat_sys_vpn_ic)
+                    .setSmallIcon(android.R.drawable.ic_dialog_info)
                     .setContentIntent(openIntent)
                     .build()
 
