@@ -37,7 +37,7 @@ jobs:
         id: build
         run: |
           set -o pipefail
-          flutter build apk --release --stacktrace 2>&1 | tee /tmp/build.log
+          flutter build apk --release 2>&1 | tee /tmp/build.log
 
       - name: Save build log on failure
         if: failure()
